@@ -1,5 +1,5 @@
 import { Client } from "baltica";
-import { PlayerAuthInputPacket, InputData, type Vector3f } from "@serenityjs/protocol";
+import { PlayerAuthInputPacket, InputData, Vector3f, Vector2f, PlayerAuthInputData } from "@serenityjs/protocol";
 
 // Configuration
 const OFFLINE = process.env.OFFLINE === "true";
@@ -17,7 +17,7 @@ console.log("=".repeat(60));
 
 class MovementTest {
   private client: Client;
-  private position: Vector3f = { x: 0, y: 0, z: 0 };
+  private position: Vector3f = new Vector3f(0, 0, 0);
   private rotation: { pitch: number; yaw: number; headYaw: number } = {
     pitch: 0,
     yaw: 0,
@@ -64,14 +64,14 @@ class MovementTest {
       this.log("CONNECT", "✓ Connected to server!");
     });
 
-    // Disconnected
-    this.client.on("disconnect", (reason: string) => {
+    // Disconnected (using any to bypass TypeScript event type checking)
+    (this.client as any).on("disconnect", (reason: string) => {
       this.log("DISCONNECT", `✗ Disconnected: ${reason}`);
       process.exit(0);
     });
 
-    // Errors
-    this.client.on("error", (error: Error) => {
+    // Errors (using any to bypass TypeScript event type checking)
+    (this.client as any).on("error", (error: Error) => {
       this.log("ERROR", `✗ Error: ${error.message}`);
       console.error(error);
     });
@@ -84,7 +84,7 @@ class MovementTest {
         if (packet.position) {
           this.position = packet.position;
         } else {
-          this.position = { x: 0, y: 64, z: 0 };
+          this.position = new Vector3f(0, 64, 0);
         }
 
         this.log("SPAWN", "✓ Spawned in world!", {
@@ -251,7 +251,7 @@ class MovementTest {
     this.log("MOVE", "✓ All 20 packets scheduled");
   }
 
-  private sendMovementPacket(inputFlags: InputData[], delta: Vector3f, shouldLog: boolean = false): void {
+  private sendMovementPacket(inputFlags: InputData[], delta: { x: number; y: number; z: number }, shouldLog: boolean = false): void {
     const packet = new PlayerAuthInputPacket();
 
     // Ensure delta is valid
@@ -262,25 +262,39 @@ class MovementTest {
     this.position.y += safeDelta.y;
     this.position.z += safeDelta.z;
 
+    // Convert input flags to PlayerAuthInputData
+    const flagsBitmask = inputFlags.reduce((acc, flag) => acc | BigInt(flag), 0n);
+    const inputData = new PlayerAuthInputData(flagsBitmask);
+
+    // Set packet fields according to @serenityjs/protocol structure
     packet.position = this.position;
-    packet.pitch = this.rotation.pitch;
-    packet.yaw = this.rotation.yaw;
+    packet.rotation = new Vector2f(this.rotation.pitch, this.rotation.yaw);
     packet.headYaw = this.rotation.headYaw;
-    packet.inputData = inputFlags;
+    packet.inputData = inputData;
     packet.inputMode = 1; // Touch
     packet.playMode = 0; // Normal
-    packet.interactionModel = 0; // Touch
-    packet.vrGazeDirection = { x: 0, y: 0, z: 0 };
-    packet.tick = this.tick++;
-    packet.delta = safeDelta;
-    packet.analogMoveVector = { x: safeDelta.x, y: safeDelta.z };
+    packet.interactionMode = 0; // Touch
+    packet.cameraOrientation = new Vector3f(0, 0, 0);
+    packet.inputTick = this.tick++;
+    packet.positionDelta = new Vector3f(safeDelta.x, safeDelta.y, safeDelta.z);
+    packet.analogueMotion = new Vector2f(safeDelta.x, safeDelta.z);
+    packet.motion = new Vector2f(0, 0);
+    packet.interactRotation = new Vector2f(0, 0);
+    packet.rawMoveVector = new Vector2f(safeDelta.x, safeDelta.z);
+
+    // Set nullable fields to null
+    packet.inputTransaction = null;
+    packet.itemStackRequest = null;
+    packet.blockActions = null;
+    packet.predictedVehicle = null;
 
     if (shouldLog) {
       this.log("PACKET", "Sending PlayerAuthInputPacket", {
-        position: packet.position,
+        position: { x: packet.position.x, y: packet.position.y, z: packet.position.z },
+        rotation: { x: packet.rotation.x, y: packet.rotation.y },
         inputData: inputFlags.map(f => InputData[f]),
-        delta: delta,
-        tick: packet.tick.toString(),
+        positionDelta: safeDelta,
+        inputTick: packet.inputTick.toString(),
       });
     }
 
