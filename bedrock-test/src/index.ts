@@ -1,5 +1,12 @@
 import { Client } from "baltica";
-import { PlayerAuthInputPacket, InputData, Vector3f, Vector2f, PlayerAuthInputData } from "@serenityjs/protocol";
+import {
+  PlayerAuthInputPacket,
+  InputData,
+  Vector3f,
+  Vector2f,
+  PlayerAuthInputData,
+  SetLocalPlayerAsInitializedPacket
+} from "@serenityjs/protocol";
 
 // Configuration
 const OFFLINE = process.env.OFFLINE === "true";
@@ -28,6 +35,7 @@ class MovementTest {
   private testRunning: boolean = false;
   private moveCount: number = 0;
   private direction: "forward" | "backward" = "forward";
+  private runtimeEntityId: bigint = 0n;
 
   constructor() {
     console.log("[INIT] Creating Baltica client...");
@@ -87,12 +95,30 @@ class MovementTest {
           this.position = new Vector3f(0, 64, 0);
         }
 
+        // Store runtime entity ID
+        if (packet.runtimeEntityId) {
+          this.runtimeEntityId = packet.runtimeEntityId;
+          this.log("SPAWN", `Runtime Entity ID: ${this.runtimeEntityId}`);
+        }
+
         this.log("SPAWN", "✓ Spawned in world!", {
           position: this.position,
           rotation: this.rotation,
         });
 
         this.spawned = true;
+
+        // Send initialization packet (critical for proper spawn!)
+        this.log("SPAWN", "Sending SetLocalPlayerAsInitializedPacket...");
+        const initPacket = new SetLocalPlayerAsInitializedPacket();
+        initPacket.runtimeEntityId = this.runtimeEntityId;
+
+        try {
+          this.client.send(initPacket.serialize());
+          this.log("SPAWN", "✓ Initialization packet sent!");
+        } catch (error) {
+          this.log("SPAWN", `✗ Error sending init packet: ${error}`);
+        }
 
         // Wait 2 seconds, then start test
         this.log("TEST", "Will start movement test in 2 seconds...");
@@ -207,67 +233,45 @@ class MovementTest {
   private moveOneBlock(direction: "forward" | "backward"): void {
     this.log("MOVE", `▶ Attempting to move 1 block ${direction}...`);
 
-    // Calculate direction based on yaw
-    const radians = (this.rotation.yaw * Math.PI) / 180;
-    const movementDistance = 1.0; // 1 block
-
-    let deltaX = 0;
-    let deltaZ = 0;
-
-    if (direction === "forward") {
-      deltaX = -Math.sin(radians) * movementDistance;
-      deltaZ = Math.cos(radians) * movementDistance;
-    } else {
-      deltaX = Math.sin(radians) * movementDistance;
-      deltaZ = -Math.cos(radians) * movementDistance;
-    }
-
-    this.log("MOVE", "Movement calculation", {
-      yaw: this.rotation.yaw,
-      radians: radians,
-      direction: direction,
-      deltaX: deltaX,
-      deltaZ: deltaZ,
-      perPacketX: deltaX / 20,
-      perPacketZ: deltaZ / 20,
-    });
-
-    // Send multiple input packets to ensure movement
+    // The input flag tells the server which direction we're pressing
     const inputFlag = direction === "forward" ? InputData.Up : InputData.Down;
 
-    this.log("MOVE", `Sending 20 packets with input flag: ${InputData[inputFlag]}`);
+    // Movement vector should be normalized (-1 to 1) representing input direction
+    // NOT the actual displacement - the server calculates actual movement
+    const moveX = 0; // No left/right
+    const moveZ = direction === "forward" ? 1 : -1; // Forward or backward
+
+    this.log("MOVE", "Movement parameters", {
+      direction: direction,
+      inputFlag: InputData[inputFlag],
+      moveVector: { x: moveX, z: moveZ },
+      note: "Movement vector is normalized input direction, not displacement"
+    });
+
+    this.log("MOVE", `Sending 20 packets (1 second @ 20 ticks/sec)...`);
 
     // Send 20 packets (1 second worth at 20 ticks/sec)
     for (let i = 0; i < 20; i++) {
       setTimeout(() => {
-        this.sendMovementPacket([inputFlag], {
-          x: deltaX / 20,
-          y: 0,
-          z: deltaZ / 20,
-        }, i === 0); // Only log first packet
+        this.sendMovementPacket([inputFlag], moveX, moveZ, i === 0); // Only log first packet
       }, i * 50); // 50ms = 20 ticks per second
     }
 
     this.log("MOVE", "✓ All 20 packets scheduled");
   }
 
-  private sendMovementPacket(inputFlags: InputData[], delta: { x: number; y: number; z: number }, shouldLog: boolean = false): void {
+  private sendMovementPacket(inputFlags: InputData[], moveX: number, moveZ: number, shouldLog: boolean = false): void {
     const packet = new PlayerAuthInputPacket();
-
-    // Ensure delta is valid
-    const safeDelta = delta || { x: 0, y: 0, z: 0 };
-
-    // Update our predicted position
-    this.position.x += safeDelta.x;
-    this.position.y += safeDelta.y;
-    this.position.z += safeDelta.z;
 
     // Convert input flags to PlayerAuthInputData
     const flagsBitmask = inputFlags.reduce((acc, flag) => acc | BigInt(flag), 0n);
     const inputData = new PlayerAuthInputData(flagsBitmask);
 
+    // DON'T update position locally - let the server update us via MovePlayerPacket
+    // This is server-authoritative movement
+
     // Set packet fields according to @serenityjs/protocol structure
-    packet.position = this.position;
+    packet.position = this.position; // Send current position
     packet.rotation = new Vector2f(this.rotation.pitch, this.rotation.yaw);
     packet.headYaw = this.rotation.headYaw;
     packet.inputData = inputData;
@@ -276,11 +280,16 @@ class MovementTest {
     packet.interactionMode = 0; // Touch
     packet.cameraOrientation = new Vector3f(0, 0, 0);
     packet.inputTick = this.tick++;
-    packet.positionDelta = new Vector3f(safeDelta.x, safeDelta.y, safeDelta.z);
-    packet.analogueMotion = new Vector2f(safeDelta.x, safeDelta.z);
-    packet.motion = new Vector2f(0, 0);
+
+    // positionDelta should be zero in server-authoritative mode (server calculates it)
+    packet.positionDelta = new Vector3f(0, 0, 0);
+
+    // Motion vectors represent input direction (normalized -1 to 1)
+    packet.motion = new Vector2f(moveX, moveZ);
+    packet.analogueMotion = new Vector2f(moveX, moveZ);
+    packet.rawMoveVector = new Vector2f(moveX, moveZ);
+
     packet.interactRotation = new Vector2f(0, 0);
-    packet.rawMoveVector = new Vector2f(safeDelta.x, safeDelta.z);
 
     // Set nullable fields to null
     packet.inputTransaction = null;
@@ -291,9 +300,9 @@ class MovementTest {
     if (shouldLog) {
       this.log("PACKET", "Sending PlayerAuthInputPacket", {
         position: { x: packet.position.x, y: packet.position.y, z: packet.position.z },
-        rotation: { x: packet.rotation.x, y: packet.rotation.y },
+        rotation: { pitch: packet.rotation.x, yaw: packet.rotation.y },
         inputData: inputFlags.map(f => InputData[f]),
-        positionDelta: safeDelta,
+        motion: { x: moveX, z: moveZ },
         inputTick: packet.inputTick.toString(),
       });
     }
