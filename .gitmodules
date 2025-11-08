@@ -1,0 +1,9 @@
+[submodule "repos/Baltica"]
+	path = repos/Baltica
+	url = git@github.com:sness23/Baltica.git
+[submodule "repos/bedrock-protocol"]
+	path = repos/bedrock-protocol
+	url = git@github.com:sness23/bedrock-protocol.git
+[submodule "repos/gophertunnel"]
+	path = repos/gophertunnel
+	url = git@github.com:sness23/gophertunnel.git

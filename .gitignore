@@ -1,0 +1,24 @@
+# Bedrock server world data (dynamic, should not be tracked)
+bedrock/worlds/
+bedrock/minecraftpe/
+bedrock/premium_cache/
+bedrock/treatments/
+bedrock/*.log
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+*.log
+
+# Environment files
+.env
+
+# Auth tokens
+auth-tokens/
+tokens/
+bedrock/
+
+bedrock-server
+

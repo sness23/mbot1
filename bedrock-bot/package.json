@@ -1,0 +1,25 @@
+{
+  "name": "bedrock-bot",
+  "version": "1.0.0",
+  "description": "A simple Minecraft Bedrock bot for automation",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "dev:remote": "tsx src/remote.ts",
+    "test:movement": "tsx src/test-movement.ts",
+    "start": "node dist/index.js",
+    "start:remote": "node dist/remote.js"
+  },
+  "keywords": ["minecraft", "bedrock", "bot"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "baltica": "^0.1.15"
+  }
+}
