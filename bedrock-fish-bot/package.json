@@ -1,0 +1,26 @@
+{
+  "name": "bedrock-fish-bot",
+  "version": "1.0.0",
+  "description": "Minecraft Bedrock auto-fishing bot",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx src/index.ts",
+    "dev:local": "OFFLINE=true tsx src/index.ts",
+    "build": "tsc"
+  },
+  "keywords": [
+    "minecraft",
+    "bedrock",
+    "fishing",
+    "bot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^24.10.0",
+    "baltica": "^0.1.15",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
